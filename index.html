@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Government Budget Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js" integrity="sha256-K/7O7WH6qN3cczt51spP5juD3j+BayoGTrKfHgXv7ck=" crossorigin="anonymous"></script>
+  <style>
+    body {
+      max-width: 600px;
+      margin: 40px auto;
+      font-family: Arial, sans-serif;
+      padding: 15px;
+    }
+    input, button {
+      width: 100%;
+      padding: 8px;
+      margin: 6px 0;
+      box-sizing: border-box;
+    }
+    section {
+      border: 1px solid #ccc;
+      margin-bottom: 25px;
+      padding: 15px;
+      border-radius: 8px;
+    }
+    h1, h2 {
+      color: #333;
+    }
+    #status {
+      font-weight: bold;
+      margin-top: 15px;
+      color: #007700;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Government Budget Tracker</h1>
+  <p><b>Current Account:</b> <span id="account">Not connected</span></p>
+
+  <section>
+    <h2>Set Fund Limit (Owner only)</h2>
+    <input type="text" id="set-limit-department" placeholder="Department Address (0x...)" />
+    <input type="text" id="set-limit-amount" placeholder="Fund Limit (ETH)" />
+    <button id="btn-set-limit">Set Fund Limit</button>
+  </section>
+
+  <section>
+    <h2>Request Funds (Department only)</h2>
+    <input type="text" id="request-funds-amount" placeholder="Request Amount (ETH)" />
+    <button id="btn-request-funds">Request Funds</button>
+  </section>
+
+  <section>
+    <h2>Query Allocated Funds</h2>
+    <input type="text" id="query-allocated-department" placeholder="Department Address (0x...)" />
+    <button id="btn-query-allocated">Get Allocated Funds</button>
+    <p><b>Allocated Funds: </b><span id="allocated-funds">-</span> ETH</p>
+  </section>
+
+  <section>
+    <h2>Withdraw Funds (Owner only)</h2>
+    <input type="text" id="withdraw-to" placeholder="Recipient Address (0x...)" />
+    <input type="text" id="withdraw-amount" placeholder="Amount (ETH)" />
+    <button id="btn-withdraw">Withdraw</button>
+  </section>
+
+  <p id="status"></p>
+
+  <script>
+    // Replace with your contract's deployed address
+    const CONTRACT_ADDRESS = "0x3D99B2bae449410eDf7845Bdafe1F24D669d097B";
+
+    // Simplified ABI - only functions/events used
+    const CONTRACT_ABI = [ 
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "department",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "limit",
+				"type": "uint256"
+			}
+		],
+		"name": "FundLimitSet",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "department",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "FundsAllocated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "department",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "bool",
+				"name": "approved",
+				"type": "bool"
+			}
+		],
+		"name": "FundsRequested",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "requestFunds",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "department",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "limit",
+				"type": "uint256"
+			}
+		],
+		"name": "setFundLimit",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "withdraw",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"stateMutability": "payable",
+		"type": "receive"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "balances",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "fundLimits",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "department",
+				"type": "address"
+			}
+		],
+		"name": "getAllocatedFunds",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+
+      
+    ];
+
+    let provider;
+    let signer;
+    let contract;
+
+    const statusEl = document.getElementById("status");
+    const accountEl = document.getElementById("account");
+    const allocatedFundsEl = document.getElementById("allocated-funds");
+
+    async function init() {
+      if (!window.ethereum) {
+        alert("MetaMask (or an Ethereum wallet) is required to use this app.");
+        statusEl.textContent = "No Ethereum provider found.";
+        return;
+      }
+
+      try {
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        signer = provider.getSigner();
+        const address = await signer.getAddress();
+        accountEl.textContent = address;
+
+        contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+        statusEl.textContent = "Ready to interact with the contract.";
+      } catch (err) {
+        statusEl.textContent = "Error connecting wallet: " + err.message;
+      }
+    }
+
+    // Helper: Convert ETH to wei (BigNumber)
+    function toWei(eth) {
+      try {
+        return ethers.utils.parseEther(eth);
+      } catch {
+        return null;
+      }
+    }
+
+    // Set Fund Limit
+    document.getElementById("btn-set-limit").onclick = async () => {
+      const dept = document.getElementById("set-limit-department").value.trim();
+      const limitEth = document.getElementById("set-limit-amount").value.trim();
+      const limitWei = toWei(limitEth);
+      if (!ethers.utils.isAddress(dept) || !limitWei) {
+        alert("Please enter valid department address and fund limit.");
+        return;
+      }
+
+      try {
+        statusEl.textContent = "Sending setFundLimit transaction...";
+        const tx = await contract.setFundLimit(dept, limitWei);
+        await tx.wait();
+        statusEl.textContent = "Fund limit set successfully.";
+      } catch (err) {
+        statusEl.textContent = "Error: " + (err.data?.message || err.message || err);
+      }
+    };
+
+    // Request Funds
+    document.getElementById("btn-request-funds").onclick = async () => {
+      const amountEth = document.getElementById("request-funds-amount").value.trim();
+      const amountWei = toWei(amountEth);
+      if (!amountWei) {
+        alert("Please enter valid amount to request.");
+        return;
+      }
+
+      try {
+        statusEl.textContent = "Sending requestFunds transaction...";
+        const tx = await contract.requestFunds(amountWei);
+        await tx.wait();
+        statusEl.textContent = "Request submitted, check blockchain events for approval.";
+      } catch (err) {
+        statusEl.textContent = "Error: " + (err.data?.message || err.message || err);
+      }
+    };
+
+    // Get Allocated Funds
+    document.getElementById("btn-query-allocated").onclick = async () => {
+      const dept = document.getElementById("query-allocated-department").value.trim();
+      if (!ethers.utils.isAddress(dept)) {
+        alert("Please enter a valid department address.");
+        return;
+      }
+
+      try {
+        statusEl.textContent = "Fetching allocated funds...";
+        const wei = await contract.getAllocatedFunds(dept);
+        const eth = ethers.utils.formatEther(wei);
+        allocatedFundsEl.textContent = eth;
+        statusEl.textContent = "Allocated funds fetched.";
+      } catch (err) {
+        statusEl.textContent = "Error: " + (err.data?.message || err.message || err);
+      }
+    };
+
+    // Withdraw
+    document.getElementById("btn-withdraw").onclick = async () => {
+      const to = document.getElementById("withdraw-to").value.trim();
+      const amountEth = document.getElementById("withdraw-amount").value.trim();
+      const amountWei = toWei(amountEth);
+      if (!ethers.utils.isAddress(to) || !amountWei) {
+        alert("Please enter a valid recipient address and amount.");
+        return;
+      }
+
+      try {
+        statusEl.textContent = "Sending withdraw transaction...";
+        const tx = await contract.withdraw(to, amountWei);
+        await tx.wait();
+        statusEl.textContent = "Withdrawal successful.";
+      } catch (err) {
+        statusEl.textContent = "Error: " + (err.data?.message || err.message || err);
+      }
+    };
+
+    window.onload = init;
+  </script>
+</body>
+</html>
